@@ -1,0 +1,37 @@
+Automated_Template_Assistant/
+├─ public/
+│  └─ index.html
+├─ src/
+│  ├─ api/                       # thin wrappers around Ic endpoints
+│  │  └─ instantCardClient.ts
+│  ├─ components/
+│  │  ├─ ChatAssistant.tsx       # conversation orchestrator
+│  │  ├─ MessageList.tsx
+│  │  ├─ FileUpload.tsx
+│  │  ├─ Spinner.tsx
+│  │  └─ PreviewViewer.tsx
+│  ├─ hooks/
+│  │  ├─ useInstantCard.ts       # calls create/patch/preview etc.
+│  │  └─ usePolling.ts
+│  ├─ store/                     # Zustand slices
+│  │  └─ chatStore.ts
+│  ├─ types/
+│  │  ├─ designBrief.ts
+│  │  └─ instantCard.ts
+│  ├─ utils/
+│  │  ├─ errorHandler.ts
+│  │  └─ debounce.ts
+│  ├─ i18n/
+│  │  └─ en.ts
+│  ├─ assets/
+│  ├─ styles/
+│  │  └─ index.css               # imports Tailwind base/components/utilities
+│  ├─ App.tsx
+│  └─ main.tsx
+├─ .env*                         # API base-URL, staging vs prod, etc.
+├─ tailwind.config.cjs
+├─ postcss.config.cjs
+├─ tsconfig.json
+├─ vite.config.ts
+├─ .eslintrc.js
+└─ .prettierrc
