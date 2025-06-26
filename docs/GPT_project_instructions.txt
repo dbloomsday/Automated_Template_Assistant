@@ -1,0 +1,109 @@
+Updated project spec — now wired to the real InstantCard API flow (v 1 + v 2)
+(supersedes the v-0.9 draft)
+
+0 · Roles & models
+Component	Model	Responsibility
+Chat Assistant	o3-mini	Greets the user, parses the onboarding form, handles uploads, tracks revisions, calls backend endpoints, and hands off to support when needed.
+TemplateGPT	o3-large	Generates only JSON that follows the InstantCard template schema (see §5).
+
+1 · Runtime life-cycle
+Host widget mounts
+
+ts
+Copy
+Edit
+<InstantCardChat divId="…"
+  designBrief={FormPayload}
+  sessionCookie={string}          // bearer token goes here
+  maxRevisions={number = 0}       // 0 = unlimited
+/>
+Greeting → Chat Assistant thanks the user and says it’s preparing the first design.
+
+Template request → forwards designBrief (plus any logoFile.url) to TemplateGPT.
+
+Spinner & status ping every 20 s (max 3) while waiting.
+
+Preview returned → shows PNG, then asks: 👍 Approve / 🔁 Revise / 👤 Human designer?
+
+2 · Design-brief object
+ts
+Copy
+Edit
+type FormPayload = {
+  email:                string
+  company:              string
+  orientation:          "portrait" | "landscape"
+  slot:                 "No" | "Short" | "Long"
+  overlay:              string
+  cardType:             "Regular PVC" | "Eco" | …
+  nameFieldLabel:       string                 // “Full Name”
+  employeeFields:       string[]               // split on commas
+  barcodeFront?:        string
+  additionalFront?:     string[]
+  backColor?:           string                 // e.g. “Black Text Back”
+  barcodeBack?:         string
+  additionalBack?:      string[]
+  ifFound?:             string
+  logoFile?:            { name:string, url:string }  // PNG/JPG only (v1)
+  designStyle?:         string                 // “Minimalist Modern”
+}
+3 · Backend flow & endpoints
+Step	Endpoint	Verb	Key params	Purpose
+Auth	/authenticate	POST	body → email, password	Returns auth_token; widget stores in sessionCookie. v1 & v2
+Create template	/card_templates	POST	organization_id (query)<br/>card_template[…] (form)	Stores TemplateGPT JSON (front_data, back_data…) in IC. v1
+Update template	/card_templates/{id}	PATCH	same as above + id (path)	Revision cycle. v1
+Attach logo(s)	/card_templates/{id}/upload	POST	organization_id, id, image (file)	Upload PNG/JPG to template. v1
+Draft card for preview	/organizations/{org_id}/cards	POST	body: card_template_id, card[data] (place-holders)	Creates a renderable card. v1
+Fetch preview	/organizations/{org_id}/cards/{card_id}/preview	GET	–	Returns Base-64 PNG(s). v1
+Update draft card	/organizations/{org_id}/cards/{card_id}	PATCH	body: card[data]	Used when only data changes (barcode, photos, etc.). v1
+Finalise card (optional)	/organizations/{org_id}/cards/{card_id}/finalize	PATCH	–	Locks card for printing. v1
+Print-job (optional)	/print_jobs …	see §7	Create / add cards / print. v1	
+
+Why v1? Only the v1 API exposes template CRUD; card & preview endpoints exist in both versions, so we stay in v1 for consistency.
+
+4 · Chat Assistant behaviour table
+Situation	Behaviour
+New design ready	Show PNG preview ➜ ask for Approve / Revise / Human.
+Approve	Reply “Great! Your template is stored in InstantCard and ready for use.” (no extra call needed — creation already done).
+Revise	Collect changes, increment revisionCount; if revisionCount > maxRevisions ➜ trigger human hand-off, else PATCH the template and loop.
+Human designer	POST /support/ticket (endpoint TBD); friendly message: “A human designer will update your card within 1 business day.”
+Backend error	Retry up to 2 ×; on 3rd failure open support ticket automatically.
+
+5 · TemplateGPT system prompt (unchanged)
+Embed the schema + 12 rules verbatim from instructions_AI_assistant_template_output.txt.
+
+6 · Front-end widget tech spec
+React 18 + TS 5 + Vite
+
+Uploads – <input type="file" accept=".png,.jpg,.jpeg" /> → POST to /card_templates/{id}/upload.
+
+State – Zustand (chat, revisionCount, templateId, cardId, status).
+
+Styling – Tailwind; theme vars via CSS custom props.
+
+i18n – Hard-coded English (v1); wrap strings for future locales.
+
+Status ping – Every 20 s, 3 times max.
+
+7 · Print-job (optional, when user wants physical cards)
+Action	Endpoint	Verb	Notes
+Create job	/print_jobs	POST	organization_id, print_job[card_template_id], etc.
+Add cards	/print_jobs/{id}/add_users	POST	organization_id, list of card IDs
+Submit	/print_jobs/{id}/print	PUT	organization_id, optional shipping_provider_id
+Check balance	/print_jobs/{id}/check_balance	GET	optional pre-flight
+
+(Widget may call these after approval, but is not required for the design chat MVP.)
+
+8 · Configurable parameters
+Name	Default	Meaning
+maxRevisions	0	0 = ∞; >0 = auto-handoff limit.
+statusPingInterval	20 000 ms	Spinner message cadence.
+statusPingMax	3	Max pings per wait cycle.
+fileTypes	["image/png","image/jpeg"]	Extendable list of upload MIME types.
+
+9 · Outstanding TODOs
+Support ticket endpoint – confirm final path & payload, then plug into “Human designer” + error-escalation flows.
+
+Rate-limit & error code catalogue – document once backend publishes limits.
+
+v2 migration plan – if/when template CRUD arrives in v2, revisit to simplify flow.
