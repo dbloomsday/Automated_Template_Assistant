@@ -9,11 +9,11 @@ import { askTemplateAssistant } from '@/api/openaiClient';
 import { withErrorHandling } from '@/utils/errorHandler';
 import { useChatStore } from '@/store/chatStore';
 
-/* Wrap every API helper so errors bubble up in a uniform way */
-const safeAuth          = withErrorHandling(authenticate);
-const safeCreateTmpl    = withErrorHandling(createTemplate);
-const safeCreateDraft   = withErrorHandling(createDraftCard);
-const safeGetPreview    = withErrorHandling(getPreview);
+/* Wrap helpers so any thrown AxiosError is surfaced uniformly */
+const safeAuth        = withErrorHandling(authenticate);
+const safeCreateTmpl  = withErrorHandling(createTemplate);
+const safeCreateDraft = withErrorHandling(createDraftCard);
+const safeGetPreview  = withErrorHandling(getPreview);
 
 export function useInstantCard() {
   const {
@@ -27,25 +27,29 @@ export function useInstantCard() {
 
   const kickOff = useCallback(async () => {
     try {
-      /* 0️⃣  Login – obtains bearer token */
+      /* 0️⃣  Login – obtains bearer + session cookie */
       await safeAuth(
         import.meta.env.VITE_IC_EMAIL,
         import.meta.env.VITE_IC_PASSWORD,
       );
 
-      /* 1️⃣  Let TemplateGPT build the JSON */
+      /* 1️⃣  (Optional) get JSON back from TemplateGPT */
       const tplJson = await askTemplateAssistant(designBrief);
+      const { front_data = '{}', back_data = '{}' } = JSON.parse(tplJson);
 
-      /* 2️⃣  Store template in InstantCard (v1) */
+      /* 2️⃣  Create template (multipart form-data) */
       const tpl = await safeCreateTmpl(orgId, {
-        card_template: JSON.parse(tplJson),
+        card_type_id: 1,   // Regular PVC
+        name:          '', // you can set a title later
+        front_data,
+        back_data,
       });
       setTemplateId(tpl.id);
 
-      /* 3️⃣  Draft card for preview */
+      /* 3️⃣  Draft card so we can render a PNG preview */
       const draft = await safeCreateDraft(orgId, {
         card_template_id: tpl.id,
-        card: { data: {} }, // placeholders
+        card: { data: {} }, // barcodes / photos go here later
       });
       setCardId(draft.id);
 
