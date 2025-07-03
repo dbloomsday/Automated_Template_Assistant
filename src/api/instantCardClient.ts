@@ -1,28 +1,24 @@
 import axios from 'axios';
 
 /* ------------------------------------------------------------------
-   Two axios instances routed through Vite’s proxy
-   • /ic/v2/...  →  https://core.instantcard.net/api/v2/...
-   • /ic/...     →  https://core.instantcard.net/api/...
+   Axios instances routed through Vite’s proxy
 -------------------------------------------------------------------*/
 const apiV2 = axios.create({
   baseURL: '/ic/v2',
-  withCredentials: true,          // carry session cookie if server sets one
+  withCredentials: true,
 });
 
 const apiV1 = axios.create({
   baseURL: '/ic',
-  withCredentials: true,          // send the cookie back to v1 endpoints
-  // ⚠️  NO global Content-Type here – we choose per request
+  withCredentials: true,
+  // NOTE: no global Content-Type – we set it per request
 });
 
 /* ------------------------------------------------------------------
-   STEP-1: POST  /v2/authenticate   (multipart form-data)
-   STEP-2: GET   /v2/profile/me?v=2.4   (Bearer + exact Accept header)
-             → server sets _instantcard_session cookie for v1 calls
+   Auth
 -------------------------------------------------------------------*/
 export async function authenticate(email: string, password: string) {
-  /* 1️⃣  login, get bearer */
+  // step-1: login → bearer token
   const fd = new FormData();
   fd.append('email', email);
   fd.append('password', password);
@@ -31,22 +27,22 @@ export async function authenticate(email: string, password: string) {
     data: { auth_token },
   } = await apiV2.post('/authenticate', fd);
 
-  /* apply Bearer + Accept to all future v2 requests */
+  // make every v2 call carry Bearer + exact Accept
   Object.assign(apiV2.defaults.headers.common, {
     Authorization: `Bearer ${auth_token}`,
     Accept: 'application/json',
   });
 
-  /* 2️⃣  hit /profile/me – sets session cookie */
+  // step-2: profile/me – server sets _instantcard_session cookie
   const res = await apiV2.get('/profile/me', { params: { v: '2.4' } });
   if (res.status !== 200) {
     throw new Error(`/profile/me failed: ${res.status} ${res.statusText}`);
   }
 
-  return auth_token;       // cookie now stored; apiV1 is authenticated
+  return auth_token; // cookie now stored; apiV1 is authenticated
 }
 
-/* ---------------------  v1 helpers  ----------------------------- */
+/* ----------------  v1 helpers  ---------------- */
 
 export async function createTemplate(
   orgId: string,
@@ -61,7 +57,6 @@ export async function createTemplate(
     special_handlings?: string;
   },
 ) {
-  /* multipart form-data – matches Swagger */
   const fd = new FormData();
   fd.append('organization_id', orgId);
   Object.entries(template).forEach(([k, v]) =>
@@ -71,7 +66,7 @@ export async function createTemplate(
   const { data } = await apiV1.post('/card_templates', fd, {
     params: { organization_id: orgId },
   });
-  return data;             // { id: …, organization_id: … }
+  return data;
 }
 
 export async function updateTemplate(
@@ -106,7 +101,7 @@ export async function createDraftCard(orgId: string, payload: any) {
   const { data } = await apiV1.post(
     `/organizations/${orgId}/cards`,
     payload,
-    { headers: { 'Content-Type': 'application/json' } },   // JSON only here
+    { headers: { 'Content-Type': 'application/json' } },
   );
   return data;
 }
@@ -115,5 +110,5 @@ export async function getPreview(orgId: string, cardId: string) {
   const { data } = await apiV1.get(
     `/organizations/${orgId}/cards/${cardId}/preview`,
   );
-  return data;  // base-64 PNG
+  return data; // base-64 PNG
 }

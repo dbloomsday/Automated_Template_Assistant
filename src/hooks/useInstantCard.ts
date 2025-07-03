@@ -9,7 +9,6 @@ import { askTemplateAssistant } from '@/api/openaiClient';
 import { withErrorHandling } from '@/utils/errorHandler';
 import { useChatStore } from '@/store/chatStore';
 
-/* Wrap helpers so any thrown AxiosError is surfaced uniformly */
 const safeAuth        = withErrorHandling(authenticate);
 const safeCreateTmpl  = withErrorHandling(createTemplate);
 const safeCreateDraft = withErrorHandling(createDraftCard);
@@ -27,33 +26,32 @@ export function useInstantCard() {
 
   const kickOff = useCallback(async () => {
     try {
-      /* 0️⃣  Login – obtains bearer + session cookie */
+      /* 0️⃣ login */
       await safeAuth(
         import.meta.env.VITE_IC_EMAIL,
         import.meta.env.VITE_IC_PASSWORD,
       );
 
-      /* 1️⃣  (Optional) get JSON back from TemplateGPT */
+      /* 1️⃣  generate initial JSON (optional) */
       const tplJson = await askTemplateAssistant(designBrief);
       const { front_data = '{}', back_data = '{}' } = JSON.parse(tplJson);
 
-      /* 2️⃣  Create template (multipart form-data) */
+      /* 2️⃣  create template (multipart) */
       const tpl = await safeCreateTmpl(orgId, {
-        card_type_id: 1,   // Regular PVC
-        name:          '', // you can set a title later
+        card_type_id: 1,
         front_data,
         back_data,
       });
       setTemplateId(tpl.id);
 
-      /* 3️⃣  Draft card so we can render a PNG preview */
+      /* 3️⃣  draft card */
       const draft = await safeCreateDraft(orgId, {
         card_template_id: tpl.id,
-        card: { data: {} }, // barcodes / photos go here later
+        card: { data: {} },
       });
       setCardId(draft.id);
 
-      /* 4️⃣  Fetch preview PNG */
+      /* 4️⃣  preview */
       const png = await safeGetPreview(orgId, draft.id);
       if (png) setPreview(png);
     } catch (e: any) {
