@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { setCsrfToken } from './csrfToken';
 
 /* ------------------------------------------------------------------
    Axios instances routed through Vite’s proxy
@@ -14,6 +15,18 @@ const apiV1 = axios.create({
   // NOTE: no global Content-Type – we set it per request
 });
 
+import { getCsrfToken } from './csrfToken';   // ①  ← add this line
+
+/* 👉 ②  attach the header on every mutating request */
+apiV1.interceptors.request.use((config) => {
+  const token = getCsrfToken();              // whatever you stored in initCsrfToken
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers['X-CSRF-Token'] = token;  // Rails CSRF header
+  }
+  return config;
+});
+
 /* ------------------------------------------------------------------
    Auth
 -------------------------------------------------------------------*/
@@ -24,8 +37,15 @@ export async function authenticate(email: string, password: string) {
   fd.append('password', password);
 
   const {
-    data: { auth_token },
+  data: { auth_token },
   } = await apiV2.post('/authenticate', fd);
+
+  // make all v-2 calls carry the bearer
+  apiV2.defaults.headers.common.Authorization = `Bearer ${auth_token}`;
+  apiV2.defaults.headers.common.Accept = 'application/json';
+
+  /* 👇 ADD this line so v-1 has the same header */
+  apiV1.defaults.headers.common.Authorization = `Bearer ${auth_token}`;
 
   // make every v2 call carry Bearer + exact Accept
   Object.assign(apiV2.defaults.headers.common, {
@@ -42,21 +62,21 @@ export async function authenticate(email: string, password: string) {
   return auth_token; // cookie now stored; apiV1 is authenticated
 }
 
+export async function initCsrfToken(orgId: string) {
+  const res = await apiV1.get('/card_templates', {
+    params: { include: 'fields', v: '2.1', organization_id: orgId },
+    headers: { Accept: 'application/json' },
+  });
+
+  const token = res.headers['x-csrf-token'] as string | undefined;
+  if (!token) throw new Error('X‑CSRF‑Token header missing');
+  setCsrfToken(token);
+}
+
 /* ----------------  v1 helpers  ---------------- */
 
-export async function createTemplate(
-  orgId: string,
-  template: {
-    card_type_id: number;
-    name?: string;
-    front_data: string;
-    back_data: string;
-    options?: string;
-    template_fields?: string;
-    card_data?: string;
-    special_handlings?: string;
-  },
-) {
+/* ---------------- createTemplate ---------------- */
+export async function createTemplate(orgId: string, template: any) {
   const fd = new FormData();
   fd.append('organization_id', orgId);
   Object.entries(template).forEach(([k, v]) =>
@@ -68,6 +88,9 @@ export async function createTemplate(
   });
   return data;
 }
+
+
+
 
 export async function updateTemplate(
   orgId: string,

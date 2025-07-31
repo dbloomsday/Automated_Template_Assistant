@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import {
   authenticate,
+  initCsrfToken,
   createTemplate,
   createDraftCard,
   getPreview,
@@ -31,6 +32,8 @@ export function useInstantCard() {
         import.meta.env.VITE_IC_EMAIL,
         import.meta.env.VITE_IC_PASSWORD,
       );
+
+      await initCsrfToken(orgId);
 
       /* 1️⃣  generate initial JSON (optional) */
       const tplJson = await askTemplateAssistant(designBrief);
